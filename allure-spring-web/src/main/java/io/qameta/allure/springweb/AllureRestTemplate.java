@@ -15,97 +15,45 @@
  */
 package io.qameta.allure.springweb;
 
-import io.qameta.allure.attachment.AttachmentData;
-import io.qameta.allure.attachment.AttachmentProcessor;
-import io.qameta.allure.attachment.AttachmentRenderer;
-import io.qameta.allure.attachment.DefaultAttachmentProcessor;
 import io.qameta.allure.attachment.FreemarkerAttachmentRenderer;
-import io.qameta.allure.attachment.http.HttpRequestAttachment;
-import io.qameta.allure.attachment.http.HttpResponseAttachment;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.client.ClientHttpRequestExecution;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.lang.NonNull;
-import org.springframework.util.StreamUtils;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Allure interceptor for spring rest template.
+ * Do not use AllureRestTemplate. Use {@link io.qameta.allure.springweb.AllureClientHttpRequestInterceptor} for
+ * RestTemplate, TestRestTemplate and RestClient.
+ *
+ * @deprecated in case of more configurable implementation
+ * @see io.qameta.allure.springweb.AllureClientHttpRequestInterceptor
  */
+@Deprecated
 public class AllureRestTemplate implements ClientHttpRequestInterceptor {
+    private final AllureClientHttpRequestInterceptor interceptor = AllureClientHttpRequestInterceptor.builder()
+            .enableSteps(false)
+            .build();
 
-    private String requestTemplatePath = "http-request.ftl";
-    private String responseTemplatePath = "http-response.ftl";
-
-    public String getRequestTemplatePath() {
-        return requestTemplatePath;
-    }
-
-    public String getResponseTemplatePath() {
-        return responseTemplatePath;
-    }
-
+    @Deprecated
     public AllureRestTemplate setRequestTemplate(final String templatePath) {
-        this.requestTemplatePath = templatePath;
+        interceptor.setRequestRenderer(new FreemarkerAttachmentRenderer(templatePath));
         return this;
     }
 
+    @Deprecated
     public AllureRestTemplate setResponseTemplate(final String templatePath) {
-        this.responseTemplatePath = templatePath;
+        interceptor.setResponseRenderer(new FreemarkerAttachmentRenderer(templatePath));
         return this;
     }
 
-    protected AttachmentRenderer<AttachmentData> getRequestRenderer() {
-        return new FreemarkerAttachmentRenderer(getRequestTemplatePath());
-    }
-
-    protected AttachmentRenderer<AttachmentData> getResponseRenderer() {
-        return new FreemarkerAttachmentRenderer(getResponseTemplatePath());
-    }
-
-    protected AttachmentProcessor<AttachmentData> getAttachmentProcessor() {
-        return new DefaultAttachmentProcessor();
-    }
-
-    @SuppressWarnings("NullableProblems")
     @Override
+    @SuppressWarnings("NullableProblems")
     public ClientHttpResponse intercept(@NonNull final HttpRequest request, final byte[] body,
                                         @NonNull final ClientHttpRequestExecution execution) throws IOException {
-        final AttachmentProcessor<AttachmentData> processor = getAttachmentProcessor();
-
-        final HttpRequestAttachment.Builder requestAttachmentBuilder = HttpRequestAttachment.Builder
-                .create("Request", request.getURI().toString())
-                .setMethod(request.getMethod().name())
-                .setHeaders(toMapConverter(request.getHeaders()));
-        if (body.length != 0) {
-            requestAttachmentBuilder.setBody(new String(body, StandardCharsets.UTF_8));
-        }
-
-        final HttpRequestAttachment requestAttachment = requestAttachmentBuilder.build();
-        processor.addAttachment(requestAttachment, getRequestRenderer());
-
-        final ClientHttpResponse clientHttpResponse = execution.execute(request, body);
-
-        final HttpResponseAttachment responseAttachment = HttpResponseAttachment.Builder
-                .create("Response")
-                .setResponseCode(clientHttpResponse.getStatusCode().value())
-                .setHeaders(toMapConverter(clientHttpResponse.getHeaders()))
-                .setBody(StreamUtils.copyToString(clientHttpResponse.getBody(), StandardCharsets.UTF_8))
-                .build();
-        processor.addAttachment(responseAttachment, getResponseRenderer());
-
-        return clientHttpResponse;
-    }
-
-    protected static Map<String, String> toMapConverter(final Map<String, List<String>> items) {
-        final Map<String, String> result = new HashMap<>();
-        items.forEach((key, value) -> result.put(key, String.join("; ", value)));
-        return result;
+        return interceptor.intercept(request, body, execution);
     }
 }
